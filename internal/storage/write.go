@@ -11,6 +11,10 @@ import (
 
 type Mutation func(batch *domain.HandoverBatch) error
 
+type queryer interface {
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+}
+
 func validateRequest(requestID, operation string) error {
 	if requestID == "" {
 		return domain.Required("requestId", "requestId")
@@ -24,22 +28,38 @@ func validateRequest(requestID, operation string) error {
 	return nil
 }
 
-func (s *Store) replay(requestID, operation string) (*domain.HandoverBatch, bool, error) {
-	value, found := s.replayCache.Load(requestID)
-	if !found {
+func (s *Store) replay(ctx context.Context, q queryer, requestID, operation string) (*domain.HandoverBatch, bool, error) {
+	if value, found := s.replayCache.Load(requestID); found {
+		entry, ok := value.(replayEntry)
+		if !ok {
+			return nil, false, fmt.Errorf("读取幂等缓存: 结果类型无效")
+		}
+		if entry.operation != operation {
+			return nil, false, domain.NewRuleError("request_id_reused", "requestId 已被其他操作使用", "requestId")
+		}
+		batch, err := decodeBatch(entry.data)
+		if err != nil {
+			return nil, false, fmt.Errorf("重放幂等结果: %w", err)
+		}
+		return batch, true, nil
+	}
+	var operationValue string
+	var data []byte
+	err := q.QueryRowContext(ctx, "SELECT operation, result_json FROM idempotency_results WHERE request_id = ?", requestID).Scan(&operationValue, &data)
+	if err == sql.ErrNoRows {
 		return nil, false, nil
 	}
-	entry, ok := value.(replayEntry)
-	if !ok {
-		return nil, false, fmt.Errorf("读取幂等缓存: 结果类型无效")
+	if err != nil {
+		return nil, false, fmt.Errorf("读取幂等结果: %w", err)
 	}
-	if entry.operation != operation {
+	if operationValue != operation {
 		return nil, false, domain.NewRuleError("request_id_reused", "requestId 已被其他操作使用", "requestId")
 	}
-	batch, err := decodeBatch(entry.data)
+	batch, err := decodeBatch(data)
 	if err != nil {
 		return nil, false, fmt.Errorf("重放幂等结果: %w", err)
 	}
+	s.replayCache.Store(requestID, replayEntry{operation: operationValue, data: data})
 	return batch, true, nil
 }
 
@@ -70,7 +90,7 @@ func (s *Store) CreateBatch(ctx context.Context, requestID string, batch *domain
 		return nil, false, fmt.Errorf("开始创建批次事务: %w", err)
 	}
 	defer tx.Rollback()
-	if existing, found, err := s.replay(requestID, "create_batch"); err != nil || found {
+	if existing, found, err := s.replay(ctx, tx, requestID, "create_batch"); err != nil || found {
 		return existing, found, err
 	}
 	data, err := encodeBatch(batch)
@@ -110,7 +130,7 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 		return nil, false, fmt.Errorf("开始更新批次事务: %w", err)
 	}
 	defer tx.Rollback()
-	if existing, found, err := s.replay(requestID, operation); err != nil || found {
+	if existing, found, err := s.replay(ctx, tx, requestID, operation); err != nil || found {
 		return existing, found, err
 	}
 	batch, err := scanBatch(tx.QueryRowContext(ctx, "SELECT data_json FROM batches WHERE id = ?", batchID))
