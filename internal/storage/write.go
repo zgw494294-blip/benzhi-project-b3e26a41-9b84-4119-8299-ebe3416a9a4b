@@ -105,15 +105,15 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 	if expectedVersion < 1 {
 		return nil, false, domain.Invalid("expectedVersion", "expectedVersion 必须大于 0")
 	}
-	tx, err := s.db.BeginTx(context.WithoutCancel(ctx), nil)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, false, fmt.Errorf("开始更新批次事务: %w", err)
 	}
 	defer tx.Rollback()
-	if existing, found, err := replay(context.WithoutCancel(ctx), tx, requestID, operation); err != nil || found {
+	if existing, found, err := replay(ctx, tx, requestID, operation); err != nil || found {
 		return existing, found, err
 	}
-	batch, err := scanBatch(tx.QueryRowContext(context.WithoutCancel(ctx), "SELECT data_json FROM batches WHERE id = ?", batchID))
+	batch, err := scanBatch(tx.QueryRowContext(ctx, "SELECT data_json FROM batches WHERE id = ?", batchID))
 	if err == sql.ErrNoRows {
 		return nil, false, &domain.NotFoundError{Resource: "交接批次", ID: batchID}
 	}
@@ -134,7 +134,7 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 	if err != nil {
 		return nil, false, err
 	}
-	result, err := tx.ExecContext(context.WithoutCancel(ctx), `UPDATE batches SET status=?,version=?,source_lab=?,owner_name=?,planned_handover_at=?,data_json=?,updated_at=? WHERE id=? AND version=?`,
+	result, err := tx.ExecContext(ctx, `UPDATE batches SET status=?,version=?,source_lab=?,owner_name=?,planned_handover_at=?,data_json=?,updated_at=? WHERE id=? AND version=?`,
 		batch.Status, batch.Version, batch.SourceLab, batch.OwnerName, batch.PlannedHandoverAt.UTC().Format(time.RFC3339Nano), data, batch.UpdatedAt.UTC().Format(time.RFC3339Nano), batch.ID, expectedVersion)
 	if err != nil {
 		return nil, false, fmt.Errorf("更新交接批次: %w", err)
@@ -146,10 +146,10 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 	if affected != 1 {
 		return nil, false, &domain.ConflictError{Expected: expectedVersion, Actual: batch.Version}
 	}
-	if err := syncAssociations(context.WithoutCancel(ctx), tx, batch); err != nil {
+	if err := syncAssociations(ctx, tx, batch); err != nil {
 		return nil, false, err
 	}
-	if err := saveIdempotency(context.WithoutCancel(ctx), tx, requestID, operation, batch, batch.UpdatedAt); err != nil {
+	if err := saveIdempotency(ctx, tx, requestID, operation, batch, batch.UpdatedAt); err != nil {
 		return nil, false, err
 	}
 	if err := tx.Commit(); err != nil {
