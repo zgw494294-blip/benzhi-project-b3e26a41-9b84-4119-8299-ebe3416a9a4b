@@ -25,8 +25,6 @@ type errorBody struct {
 	Details any    `json:"details,omitempty"`
 }
 
-var requestDecodeBuffer bytes.Buffer
-
 func writeJSON(w http.ResponseWriter, status int, value any) {
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
@@ -69,8 +67,8 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
 		return err
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBody)
-	requestDecodeBuffer.Reset()
-	if _, err := io.Copy(&requestDecodeBuffer, r.Body); err != nil {
+	var buffer bytes.Buffer
+	if _, err := io.Copy(&buffer, r.Body); err != nil {
 		message := "JSON 请求体格式无效"
 		if strings.Contains(err.Error(), "request body too large") {
 			message = "请求体不能超过 1 MiB"
@@ -78,7 +76,7 @@ func decodeJSON(w http.ResponseWriter, r *http.Request, target any) error {
 		writeJSON(w, http.StatusBadRequest, envelope{Error: &errorBody{Code: "invalid_json", Message: message}})
 		return err
 	}
-	decoder := json.NewDecoder(bytes.NewReader(requestDecodeBuffer.Bytes()))
+	decoder := json.NewDecoder(bytes.NewReader(buffer.Bytes()))
 	decoder.DisallowUnknownFields()
 	if err := decoder.Decode(target); err != nil {
 		message := "JSON 请求体格式无效"
