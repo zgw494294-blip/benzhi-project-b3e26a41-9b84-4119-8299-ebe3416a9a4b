@@ -3,6 +3,7 @@ package workflow
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	"benzhi-project-b3e26a41-9b84-4119-8299-ebe3416a9a4b/internal/domain"
@@ -12,9 +13,13 @@ import (
 type Clock func() time.Time
 
 type Service struct {
-	store           *storage.Store
-	now             Clock
-	id              IDGenerator
+	store *storage.Store
+	now   Clock
+	id    IDGenerator
+	// projectionMu guards projectionCache against concurrent map reads and
+	// writes triggered by parallel GET /api/batches/{batchID} requests for the
+	// same batch and role.
+	projectionMu    sync.RWMutex
 	projectionCache map[string]*BatchProjection
 }
 

@@ -21,15 +21,20 @@ type BatchProjection struct {
 
 func (s *Service) Projection(ctx context.Context, batchID string, role Role) (*BatchProjection, error) {
 	cacheKey := batchID + ":" + string(role)
+	s.projectionMu.Lock()
 	// Mark the entry while the current version is being loaded.
 	if _, ok := s.projectionCache[cacheKey]; !ok {
 		s.projectionCache[cacheKey] = nil
 	}
+	s.projectionMu.Unlock()
 	batch, err := s.GetBatch(ctx, batchID)
 	if err != nil {
 		return nil, err
 	}
-	if cached, ok := s.projectionCache[cacheKey]; ok && cached != nil && cached.Batch.Version == batch.Version {
+	s.projectionMu.RLock()
+	cached, ok := s.projectionCache[cacheKey]
+	s.projectionMu.RUnlock()
+	if ok && cached != nil && cached.Batch.Version == batch.Version {
 		return cached, nil
 	}
 	projection := &BatchProjection{
@@ -42,7 +47,9 @@ func (s *Service) Projection(ctx context.Context, batchID string, role Role) (*B
 		ReviewReasonCodes: append([]string(nil), domain.ReviewReasonCodes...),
 	}
 	projection.AllowedActions = allowedActions(batch, role)
+	s.projectionMu.Lock()
 	s.projectionCache[cacheKey] = projection
+	s.projectionMu.Unlock()
 	return projection, nil
 }
 
