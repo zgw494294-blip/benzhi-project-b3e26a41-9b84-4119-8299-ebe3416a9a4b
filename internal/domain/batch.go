@@ -68,7 +68,7 @@ func NewBatch(id string, in BatchInput, now time.Time) (*HandoverBatch, error) {
 	}
 	batch := &HandoverBatch{
 		ID: id, SourceLab: in.SourceLab, OwnerName: in.OwnerName,
-		PlannedHandoverAt: in.PlannedHandoverAt.UTC(), Status: StatusDraft,
+		PlannedHandoverAt: in.PlannedHandoverAt, Status: StatusDraft,
 		Version: 1, CreatedAt: now.UTC(), UpdatedAt: now.UTC(),
 		Items: []WasteItem{}, Reviews: []ReviewDecision{}, Timeline: []TimelineEvent{},
 	}

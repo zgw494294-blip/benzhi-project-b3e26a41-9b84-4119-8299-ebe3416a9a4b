@@ -79,7 +79,7 @@ func (s *Store) CreateBatch(ctx context.Context, requestID string, batch *domain
 		return nil, false, err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO batches(id,status,version,source_lab,owner_name,planned_handover_at,data_json,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)`,
-		batch.ID, batch.Status, batch.Version, batch.SourceLab, batch.OwnerName, batch.PlannedHandoverAt.UTC().Format(time.RFC3339Nano), data, batch.CreatedAt.UTC().Format(time.RFC3339Nano), batch.UpdatedAt.UTC().Format(time.RFC3339Nano))
+		batch.ID, batch.Status, batch.Version, batch.SourceLab, batch.OwnerName, batch.PlannedHandoverAt.Format(time.RFC3339Nano), data, batch.CreatedAt.UTC().Format(time.RFC3339Nano), batch.UpdatedAt.UTC().Format(time.RFC3339Nano))
 	if err != nil {
 		return nil, false, fmt.Errorf("插入交接批次: %w", err)
 	}
@@ -135,7 +135,7 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 		return nil, false, err
 	}
 	result, err := tx.ExecContext(ctx, `UPDATE batches SET status=?,version=?,source_lab=?,owner_name=?,planned_handover_at=?,data_json=?,updated_at=? WHERE id=? AND version=?`,
-		batch.Status, batch.Version, batch.SourceLab, batch.OwnerName, batch.PlannedHandoverAt.UTC().Format(time.RFC3339Nano), data, batch.UpdatedAt.UTC().Format(time.RFC3339Nano), batch.ID, expectedVersion)
+		batch.Status, batch.Version, batch.SourceLab, batch.OwnerName, batch.PlannedHandoverAt.Format(time.RFC3339Nano), data, batch.UpdatedAt.UTC().Format(time.RFC3339Nano), batch.ID, expectedVersion)
 	if err != nil {
 		return nil, false, fmt.Errorf("更新交接批次: %w", err)
 	}

@@ -65,16 +65,16 @@ func (s *Store) ListBatches(ctx context.Context, limit, offset int, options ...a
 		today := now.UTC().Format("2006-01-02")
 		switch due {
 		case domain.DueOverdue:
-			query += "date(planned_handover_at) < date(?)"
+			query += "substr(planned_handover_at, 1, 10) < date(?)"
 			args = append(args, today)
 		case domain.DueToday:
-			query += "date(planned_handover_at) = date(?)"
+			query += "substr(planned_handover_at, 1, 10) = date(?)"
 			args = append(args, today)
 		case domain.DueSoon:
-			query += "date(planned_handover_at) > date(?) AND date(planned_handover_at) <= date(?, '+3 days')"
+			query += "substr(planned_handover_at, 1, 10) > date(?) AND substr(planned_handover_at, 1, 10) <= date(?, '+3 days')"
 			args = append(args, today, today)
 		case domain.DueNormal:
-			query += "date(planned_handover_at) > date(?, '+3 days')"
+			query += "substr(planned_handover_at, 1, 10) > date(?, '+3 days')"
 			args = append(args, today)
 		}
 	}

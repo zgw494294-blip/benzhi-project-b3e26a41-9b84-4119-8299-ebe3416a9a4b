@@ -24,14 +24,22 @@ func (s DueStatus) Valid() bool {
 	}
 }
 
-func dayStart(value time.Time) time.Time {
+// calendarDay returns the midnight UTC instant of the calendar day that value
+// falls on in its own timezone. Comparing two such values yields the whole-day
+// difference between calendar days regardless of each value's offset.
+func calendarDay(value time.Time) time.Time {
 	year, month, day := value.Date()
-	return time.Date(year, month, day, 0, 0, 0, 0, value.Location())
+	return time.Date(year, month, day, 0, 0, 0, 0, time.UTC)
 }
 
+// CalculateDueStatus keeps the natural-day semantics of the submitted planned
+// handover time: the planned calendar day is taken in the time's own offset,
+// while the current calendar day is taken in now's timezone. This avoids
+// misclassifying a batch whose submitted local date is a future day but whose
+// UTC instant still falls on the current UTC day.
 func CalculateDueStatus(planned, now time.Time) DueStatus {
-	today := dayStart(now)
-	due := dayStart(planned.In(now.Location()))
+	today := calendarDay(now)
+	due := calendarDay(planned)
 	days := int(due.Sub(today) / (24 * time.Hour))
 	switch {
 	case days < 0:
@@ -56,11 +64,10 @@ func (b *HandoverBatch) Reschedule(planned time.Time, reason, actor string, now 
 	if planned.IsZero() {
 		return Required("plannedHandoverAt", "新计划交接日期")
 	}
-	if dayStart(planned).Before(dayStart(now)) {
+	if calendarDay(planned).Before(calendarDay(now)) {
 		return Invalid("plannedHandoverAt", "新计划交接日期不能早于当前日期")
 	}
-	planned = planned.UTC()
-	if dayStart(planned).Equal(dayStart(b.PlannedHandoverAt.In(planned.Location()))) {
+	if calendarDay(planned).Equal(calendarDay(b.PlannedHandoverAt)) {
 		return NewRuleError("schedule_unchanged", "新计划交接日期不能与原计划相同", "plannedHandoverAt")
 	}
 	original := b.PlannedHandoverAt
