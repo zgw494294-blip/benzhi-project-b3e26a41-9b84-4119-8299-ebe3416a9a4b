@@ -125,7 +125,6 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 	if err != nil {
 		return nil, false, fmt.Errorf("读取待更新批次: %w", err)
 	}
-	batch = s.reuseBatch(batch)
 	if batch.Version != expectedVersion {
 		return nil, false, &domain.ConflictError{Expected: expectedVersion, Actual: batch.Version}
 	}
@@ -161,6 +160,7 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 	if err := tx.Commit(); err != nil {
 		return nil, false, fmt.Errorf("提交更新批次事务: %w", err)
 	}
+	s.reuseBatch(batch)
 	resultBatch, err := decodeBatch(data)
 	if err != nil {
 		return nil, false, fmt.Errorf("复制更新批次结果: %w", err)
