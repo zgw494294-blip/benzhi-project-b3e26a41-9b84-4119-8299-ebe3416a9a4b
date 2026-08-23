@@ -111,12 +111,17 @@ func (s *Store) GetReceipt(ctx context.Context, batchID string) (*domain.Archive
 	if err != nil {
 		return nil, fmt.Errorf("读取归档凭据: %w", err)
 	}
+	return decodeStoredReceipt(data)
+}
+
+// decodeStoredReceipt validates the persisted receipt representation.
+func decodeStoredReceipt(data []byte) (*domain.ArchiveReceipt, error) {
 	var receipt domain.ArchiveReceipt
 	if err := jsonUnmarshal(data, &receipt); err != nil {
-		return nil, fmt.Errorf("解析归档凭据: %w", err)
+		return nil, domain.NewRuleError("receipt_incomplete", "归档凭据结构无法解析", "receipt")
 	}
 	if !receipt.Complete() {
-		return nil, fmt.Errorf("数据库中的归档凭据不完整")
+		return nil, domain.NewRuleError("receipt_incomplete", "归档凭据缺失或结构不完整", "receipt")
 	}
 	return &receipt, nil
 }
@@ -146,12 +151,12 @@ func (s *Store) GetBatchAndReceipt(ctx context.Context, batchID string) (*domain
 	if err != nil {
 		return nil, nil, fmt.Errorf("读取待核验凭据: %w", err)
 	}
-	var receipt domain.ArchiveReceipt
-	if err := jsonUnmarshal(data, &receipt); err != nil {
-		return nil, nil, domain.NewRuleError("receipt_incomplete", "归档凭据结构无法解析", "receipt")
+	receipt, err := decodeStoredReceipt(data)
+	if err != nil {
+		return nil, nil, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, nil, fmt.Errorf("提交凭据读取事务: %w", err)
 	}
-	return batch, &receipt, nil
+	return batch, receipt, nil
 }
