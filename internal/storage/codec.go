@@ -21,12 +21,20 @@ func encodeBatch(batch *domain.HandoverBatch) ([]byte, error) {
 func decodeBatch(data []byte) (*domain.HandoverBatch, error) {
 	var batch domain.HandoverBatch
 	if err := json.Unmarshal(data, &batch); err != nil {
-		return nil, fmt.Errorf("反序列化批次: %w", err)
+		return nil, classifyBatchDecodeError(err)
 	}
 	if err := batch.Validate(); err != nil {
-		return nil, fmt.Errorf("数据库中的批次聚合损坏: %w", err)
+		return nil, classifyBatchDecodeError(err)
 	}
 	return &batch, nil
+}
+
+// classifyBatchDecodeError 统一向调用方暴露持久化聚合失败。
+func classifyBatchDecodeError(err error) error {
+	if err == nil {
+		return nil
+	}
+	return domain.NewRuleError("batch_incomplete", "批次数据结构无法解析", "batch")
 }
 
 func encodeValue(value any) ([]byte, error) {
