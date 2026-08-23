@@ -1,0 +1,273 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>实验室废弃物合规交接台</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand-block">
+      <div class="brand-mark" aria-hidden="true">交</div>
+      <div>
+        <h1>实验室废弃物合规交接台</h1>
+        <p id="connectionState">正在连接本地服务</p>
+      </div>
+    </div>
+    <div class="session-controls">
+      <label>
+        <span>当前身份</span>
+        <select id="roleSelect">
+          <option value="safety_officer">实验室安全员</option>
+          <option value="reviewer">接收复核员</option>
+        </select>
+      </label>
+      <label>
+        <span>操作人</span>
+        <input id="actorInput" value="张安全" maxlength="80" autocomplete="name">
+      </label>
+      <button id="refreshButton" class="icon-button" title="刷新批次" aria-label="刷新批次">↻</button>
+    </div>
+  </header>
+
+  <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+
+  <main class="workspace">
+    <aside class="batch-sidebar">
+      <div class="sidebar-heading">
+        <div>
+          <h2>交接批次</h2>
+          <span id="batchCount">0 个批次</span>
+        </div>
+        <button id="newBatchButton" class="primary small">新建批次</button>
+      </div>
+      <div class="filter-row">
+        <input id="batchSearch" type="search" placeholder="搜索实验室或责任人" aria-label="搜索批次">
+        <select id="dueFilter" aria-label="按到期标记筛选"><option value="">全部到期状态</option><option value="overdue">已逾期</option><option value="due_today">今日到期</option><option value="due_soon">三日内临期</option><option value="normal">正常</option></select>
+      </div>
+      <nav id="batchList" class="batch-list" aria-label="交接批次列表"></nav>
+    </aside>
+
+    <section id="emptyState" class="empty-state">
+      <div class="empty-symbol">＋</div>
+      <h2>选择一个交接批次</h2>
+      <p>批次状态、废弃物条目、审查历史和归档凭据将在这里呈现。</p>
+      <button id="emptyNewButton" class="primary">创建首个批次</button>
+    </section>
+
+    <section id="batchWorkspace" class="batch-workspace" hidden>
+      <div class="batch-header">
+        <div class="batch-title">
+          <div class="title-line">
+            <h2 id="batchLab">--</h2>
+            <span id="batchStatus" class="status-chip">--</span>
+          </div>
+          <p id="batchMeta">--</p>
+          <code id="batchID">--</code>
+        </div>
+        <div class="version-box">
+          <span>当前版本</span>
+          <strong id="batchVersion">0</strong>
+        </div>
+      </div>
+
+      <ol class="stage-track" aria-label="交接进度">
+        <li data-stage="draft"><span>1</span><b>登记封装</b></li>
+        <li data-stage="under_review"><span>2</span><b>相容审查</b></li>
+        <li data-stage="ready_for_handover"><span>3</span><b>现场交接</b></li>
+        <li data-stage="archived"><span>4</span><b>归档凭据</b></li>
+      </ol>
+
+      <div class="metrics-band">
+        <div><span>废弃物条目</span><strong id="itemMetric">0</strong></div>
+        <div><span>封装合格</span><strong id="packageMetric">0 / 0</strong></div>
+        <div><span>审查通过</span><strong id="reviewMetric">0 / 0</strong></div>
+        <div><span>退回整改</span><strong id="rejectMetric">0</strong></div>
+      </div>
+
+      <div class="tabbar" role="tablist">
+        <button class="tab active" data-tab="items" role="tab">条目与封装</button>
+        <button class="tab" data-tab="timeline" role="tab">流程时间线</button>
+        <button class="tab" data-tab="receipt" role="tab">归档凭据</button>
+      </div>
+
+      <section id="itemsPanel" class="tab-panel">
+        <div class="panel-toolbar">
+          <div>
+            <h3>废弃物清单</h3>
+            <p id="itemHint">登记条目并完成容器、封口和标签核验。</p>
+          </div>
+          <div id="batchActions" class="action-row"></div>
+        </div>
+        <div id="compatibilityPanel" class="preflight-panel"></div>
+        <div class="list-controls">
+          <select id="itemFilter" aria-label="筛选条目"><option value="">全部条目</option><option value="package_missing">存在封装缺项</option><option value="pending">待审查</option><option value="approved">已通过</option><option value="rejected">已退回</option></select>
+          <span id="selectionCount">已选择 0 项</span>
+          <button id="bulkPackageButton" type="button" class="secondary small">批量封装核验</button>
+          <button id="bulkApproveButton" type="button" class="secondary small">批量通过</button>
+          <button id="bulkRejectButton" type="button" class="secondary small">批量退回</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th><input id="selectAllItems" type="checkbox" aria-label="选择当前条目"></th>
+                <th>物料与危险属性</th>
+                <th>数量 / 类别</th>
+                <th>容器</th>
+                <th>封口 / 标签</th>
+                <th>审查状态</th>
+                <th><span class="sr-only">操作</span></th>
+              </tr>
+            </thead>
+            <tbody id="itemRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section id="timelinePanel" class="tab-panel" hidden>
+        <div class="panel-toolbar">
+          <div><h3>完整流程时间线</h3><p>状态推进、审查结论和现场确认按发生顺序保留。</p></div>
+        </div>
+        <ol id="timelineList" class="timeline-list"></ol>
+      </section>
+
+      <section id="receiptPanel" class="tab-panel" hidden>
+        <div class="panel-toolbar">
+          <div><h3>不可变归档凭据</h3><p>双方确认后签发，可使用摘要值核验冻结清单和时间线。</p></div>
+        </div>
+        <div id="receiptContent" class="receipt-content"></div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="batchDialog">
+    <form id="batchForm" method="dialog">
+      <div class="dialog-heading"><div><h2>创建交接批次</h2><p>新批次将以草稿状态开始。</p></div><button type="button" class="dialog-close" aria-label="关闭">×</button></div>
+      <label>来源实验室<input name="sourceLab" required maxlength="120" placeholder="例如：有机合成实验室 A-302"></label>
+      <label>责任人<input name="ownerName" required maxlength="80" placeholder="填写安全员姓名"></label>
+      <label>计划交接日期<input name="plannedDate" type="date" required></label>
+      <div class="field-error" data-error></div>
+      <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="primary">创建批次</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="rescheduleDialog">
+    <form id="rescheduleForm" method="dialog">
+      <div class="dialog-heading"><div><h2>调整计划交接日期</h2><p>改期会记录原日期、新日期、原因和操作人。</p></div><button type="button" class="dialog-close" aria-label="关闭">×</button></div>
+      <label>新计划交接日期<input name="plannedDate" type="date" required></label>
+      <label>改期原因<textarea name="reason" required minlength="1" maxlength="300" rows="4"></textarea></label>
+      <div class="field-error" data-error></div>
+      <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="primary">确认改期</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="bulkPackageDialog">
+    <form id="bulkPackageForm" method="dialog">
+      <div class="dialog-heading"><div><h2>批量封装核验</h2><p>相同核验结果将应用到选中的条目。</p></div><button type="button" class="dialog-close" aria-label="关闭">×</button></div>
+      <label>容器类型<input name="containerType" maxlength="80" required></label>
+      <div class="check-stack"><label><input type="checkbox" name="sealChecked">封口检查通过</label><label><input type="checkbox" name="labelChecked">标签检查通过</label></div>
+      <div class="field-error" data-error></div>
+      <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="primary">保存所选条目</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="bulkReviewDialog">
+    <form id="bulkReviewForm" method="dialog">
+      <div class="dialog-heading"><div><h2 id="bulkReviewTitle">批量审查</h2><p>本次裁决不会自动完成本轮审查。</p></div><button type="button" class="dialog-close" aria-label="关闭">×</button></div>
+      <input name="decision" type="hidden">
+      <label id="bulkReasonField">退回原因<select name="reasonCode"><option value="COMPATIBILITY_CONFLICT">相容性冲突</option><option value="PACKAGE_DEFECT">封装缺陷</option><option value="LABEL_MISMATCH">标签不符</option><option value="QUANTITY_QUESTION">数量疑义</option><option value="ACCEPTANCE_CONDITION">接收条件不符</option></select></label>
+      <label id="bulkCommentField">退回说明<textarea name="comment" maxlength="500" rows="4"></textarea></label>
+      <div class="field-error" data-error></div>
+      <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="primary">提交批量裁决</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="itemDialog">
+    <form id="itemForm" method="dialog">
+      <div class="dialog-heading"><div><h2 id="itemDialogTitle">登记废弃物条目</h2><p>危险属性可多选，数量单位必须与处置类别一致。</p></div><button type="button" class="dialog-close" aria-label="关闭">×</button></div>
+      <input name="itemID" type="hidden">
+      <label>废弃物名称<input name="materialName" required maxlength="120" placeholder="例如：含丙酮有机废液"></label>
+      <fieldset><legend>危险属性</legend><div class="choice-grid">
+        <label><input type="checkbox" name="hazards" value="flammable">易燃</label>
+        <label><input type="checkbox" name="hazards" value="corrosive">腐蚀</label>
+        <label><input type="checkbox" name="hazards" value="toxic">有毒</label>
+        <label><input type="checkbox" name="hazards" value="oxidizing">氧化性</label>
+        <label><input type="checkbox" name="hazards" value="reactive">反应性</label>
+        <label><input type="checkbox" name="hazards" value="infectious">感染性</label>
+        <label><input type="checkbox" name="hazards" value="environmental">环境危害</label>
+      </div></fieldset>
+      <div class="form-grid">
+        <label>数量<input name="quantity" type="number" min="0.001" step="0.001" required></label>
+        <label>处置类别<select name="disposalCategory"><option value="liquid">液体</option><option value="solid">固体</option><option value="container">独立容器</option></select></label>
+        <label>单位<select name="unit"><option value="L">L</option><option value="mL">mL</option><option value="kg">kg</option><option value="g">g</option><option value="piece">piece</option></select></label>
+      </div>
+      <div class="field-error" data-error></div>
+      <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="primary">保存条目</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="packageDialog">
+    <form id="packageForm" method="dialog">
+      <div class="dialog-heading"><div><h2>容器与标签核验</h2><p id="packageItemName"></p></div><button type="button" class="dialog-close" aria-label="关闭">×</button></div>
+      <input name="itemID" type="hidden">
+      <label>容器类型<input name="containerType" maxlength="80" required placeholder="例如：5L HDPE 防漏桶"></label>
+      <div class="check-stack">
+        <label><input type="checkbox" name="sealChecked">封口完整，无渗漏或残留</label>
+        <label><input type="checkbox" name="labelChecked">标签清晰，内容与条目一致</label>
+      </div>
+      <div class="field-error" data-error></div>
+      <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="primary">保存核验</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="reviewDialog">
+    <form id="reviewForm" method="dialog">
+      <div class="dialog-heading"><div><h2>条目审查结论</h2><p id="reviewItemName"></p></div><button type="button" class="dialog-close" aria-label="关闭">×</button></div>
+      <input name="itemID" type="hidden">
+      <fieldset><legend>审查结论</legend><div class="segmented">
+        <label><input type="radio" name="decision" value="approve" checked><span>通过</span></label>
+        <label><input type="radio" name="decision" value="reject"><span>退回整改</span></label>
+      </div></fieldset>
+      <label>复核员姓名<input name="reviewerName" required maxlength="80"></label>
+      <label>原因代码<input name="reasonCode" maxlength="80" placeholder="退回时必填，例如 INCOMPATIBLE"></label>
+      <label>审查说明<textarea name="comment" maxlength="500" rows="4" placeholder="退回时填写明确问题和整改要求"></textarea></label>
+      <div class="field-error" data-error></div>
+      <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="primary">提交结论</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="correctionDialog">
+    <form id="correctionForm" method="dialog">
+      <div class="dialog-heading"><div><h2>完成问题整改</h2><p id="correctionReason"></p></div><button type="button" class="dialog-close" aria-label="关闭">×</button></div>
+      <input name="itemID" type="hidden">
+      <label>废弃物名称<input name="materialName" required maxlength="120"></label>
+      <label>危险属性（英文代码，以逗号分隔）<input name="hazards" required></label>
+      <div class="form-grid">
+        <label>数量<input name="quantity" type="number" min="0.001" step="0.001" required></label>
+        <label>类别<select name="disposalCategory"><option value="liquid">液体</option><option value="solid">固体</option><option value="container">独立容器</option></select></label>
+        <label>单位<select name="unit"><option value="L">L</option><option value="mL">mL</option><option value="kg">kg</option><option value="g">g</option><option value="piece">piece</option></select></label>
+      </div>
+      <label>容器类型<input name="containerType" required maxlength="80"></label>
+      <div class="check-stack"><label><input type="checkbox" name="sealChecked">封口检查通过</label><label><input type="checkbox" name="labelChecked">标签检查通过</label></div>
+      <label>整改说明<textarea name="note" required maxlength="500" rows="3"></textarea></label>
+      <div class="field-error" data-error></div>
+      <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="primary">提交整改</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="confirmDialog">
+    <form id="confirmForm" method="dialog">
+      <div class="dialog-heading"><div><h2>确认现场交接</h2><p>确认后不可撤销；双方均确认时将立即归档。</p></div><button type="button" class="dialog-close" aria-label="关闭">×</button></div>
+      <label>确认人姓名<input name="name" required maxlength="80"></label>
+      <div class="confirmation-note">本人已核对冻结清单、容器状态和现场接收数量，确认完成本批次交接。</div>
+      <div class="field-error" data-error></div>
+      <div class="dialog-actions"><button type="button" class="secondary dialog-close">取消</button><button type="submit" class="danger">确认并提交</button></div>
+    </form>
+  </dialog>
+
+  <script src="/assets/app.js" defer></script>
+</body>
+</html>
