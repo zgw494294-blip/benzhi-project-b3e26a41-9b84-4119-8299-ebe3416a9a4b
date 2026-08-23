@@ -83,7 +83,7 @@ func (s *Store) CreateBatch(ctx context.Context, requestID string, batch *domain
 	if err != nil {
 		return nil, false, fmt.Errorf("插入交接批次: %w", err)
 	}
-	if err := syncAssociations(ctx, tx, batch); err != nil {
+	if err := syncAssociationsTx(ctx, tx, batch); err != nil {
 		return nil, false, err
 	}
 	if err := saveIdempotency(ctx, tx, requestID, "create_batch", batch, batch.CreatedAt); err != nil {
@@ -146,19 +146,34 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 	if affected != 1 {
 		return nil, false, &domain.ConflictError{Expected: expectedVersion, Actual: batch.Version}
 	}
-	if err := syncAssociations(ctx, tx, batch); err != nil {
-		return nil, false, err
-	}
 	if err := saveIdempotency(ctx, tx, requestID, operation, batch, batch.UpdatedAt); err != nil {
 		return nil, false, err
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, false, fmt.Errorf("提交更新批次事务: %w", err)
 	}
+	if err := s.syncAssociations(ctx, batch); err != nil {
+		return nil, false, err
+	}
 	return batch, false, nil
 }
 
-func syncAssociations(ctx context.Context, tx *sql.Tx, batch *domain.HandoverBatch) error {
+func (s *Store) syncAssociations(ctx context.Context, batch *domain.HandoverBatch) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("开始关联投影事务: %w", err)
+	}
+	defer tx.Rollback()
+	if err := syncAssociationsTx(ctx, tx, batch); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("提交关联投影事务: %w", err)
+	}
+	return nil
+}
+
+func syncAssociationsTx(ctx context.Context, tx *sql.Tx, batch *domain.HandoverBatch) error {
 	if _, err := tx.ExecContext(ctx, "DELETE FROM waste_items WHERE batch_id = ?", batch.ID); err != nil {
 		return fmt.Errorf("清理条目投影: %w", err)
 	}
