@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 )
@@ -26,9 +27,31 @@ func hashJSON(value any) (string, error) {
 	return hex.EncodeToString(sum[:]), nil
 }
 
+func canonicalHazards(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	write := 0
+	for _, value := range values {
+		value = strings.ToLower(strings.TrimSpace(value))
+		if value == "" {
+			continue
+		}
+		if _, exists := seen[value]; exists {
+			continue
+		}
+		seen[value] = struct{}{}
+		values[write] = value
+		write++
+	}
+	values = values[:write]
+	sort.Strings(values)
+	return values
+}
+
 func (b HandoverBatch) CalculateManifestDigest() (string, error) {
 	items := b.SortedItems()
 	for index := range items {
+		// 清单摘要按危险属性的规范顺序计算，避免同一语义产生不同摘要。
+		items[index].HazardClasses = canonicalHazards(items[index].HazardClasses)
 		items[index].UpdatedAt = time.Time{}
 		items[index].CorrectionNote = ""
 	}
