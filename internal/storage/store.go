@@ -14,10 +14,16 @@ import (
 )
 
 type Store struct {
-	db      *sql.DB
-	path    string
-	closeMu sync.RWMutex
-	closed  bool
+	db          *sql.DB
+	path        string
+	closeMu     sync.RWMutex
+	closed      bool
+	replayCache sync.Map
+}
+
+type replayEntry struct {
+	operation string
+	data      []byte
 }
 
 type Options struct {
