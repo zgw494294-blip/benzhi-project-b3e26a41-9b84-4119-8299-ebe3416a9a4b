@@ -92,7 +92,12 @@ func (s *Store) CreateBatch(ctx context.Context, requestID string, batch *domain
 	if err := tx.Commit(); err != nil {
 		return nil, false, fmt.Errorf("提交创建批次事务: %w", err)
 	}
-	return batch, false, nil
+	s.reuseBatch(batch)
+	result, err := decodeBatch(data)
+	if err != nil {
+		return nil, false, fmt.Errorf("复制创建批次结果: %w", err)
+	}
+	return result, false, nil
 }
 
 func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion int64, requestID, operation string, mutate Mutation) (*domain.HandoverBatch, bool, error) {
@@ -120,6 +125,7 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 	if err != nil {
 		return nil, false, fmt.Errorf("读取待更新批次: %w", err)
 	}
+	batch = s.reuseBatch(batch)
 	if batch.Version != expectedVersion {
 		return nil, false, &domain.ConflictError{Expected: expectedVersion, Actual: batch.Version}
 	}
@@ -155,7 +161,11 @@ func (s *Store) UpdateBatch(ctx context.Context, batchID string, expectedVersion
 	if err := tx.Commit(); err != nil {
 		return nil, false, fmt.Errorf("提交更新批次事务: %w", err)
 	}
-	return batch, false, nil
+	resultBatch, err := decodeBatch(data)
+	if err != nil {
+		return nil, false, fmt.Errorf("复制更新批次结果: %w", err)
+	}
+	return resultBatch, false, nil
 }
 
 func syncAssociations(ctx context.Context, tx *sql.Tx, batch *domain.HandoverBatch) error {

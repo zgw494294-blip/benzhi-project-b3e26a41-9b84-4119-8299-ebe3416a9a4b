@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"benzhi-project-b3e26a41-9b84-4119-8299-ebe3416a9a4b/internal/domain"
+
 	_ "modernc.org/sqlite"
 )
 
@@ -18,6 +20,8 @@ type Store struct {
 	path    string
 	closeMu sync.RWMutex
 	closed  bool
+	cacheMu sync.RWMutex
+	cache   map[string]*domain.HandoverBatch
 }
 
 type Options struct {
@@ -46,7 +50,7 @@ func Open(ctx context.Context, options Options) (*Store, error) {
 	db.SetMaxOpenConns(1)
 	db.SetMaxIdleConns(1)
 	db.SetConnMaxLifetime(0)
-	store := &Store{db: db, path: path}
+	store := &Store{db: db, path: path, cache: make(map[string]*domain.HandoverBatch)}
 	cleanup := true
 	defer func() {
 		if cleanup {

@@ -21,6 +21,25 @@ func scanBatch(scanner batchScanner) (*domain.HandoverBatch, error) {
 	return decodeBatch(data)
 }
 
+func (s *Store) reuseBatch(batch *domain.HandoverBatch) *domain.HandoverBatch {
+	s.cacheMu.RLock()
+	cached := s.cache[batch.ID]
+	if cached != nil && cached.Version == batch.Version {
+		s.cacheMu.RUnlock()
+		return cached
+	}
+	s.cacheMu.RUnlock()
+
+	s.cacheMu.Lock()
+	defer s.cacheMu.Unlock()
+	cached = s.cache[batch.ID]
+	if cached != nil && cached.Version == batch.Version {
+		return cached
+	}
+	s.cache[batch.ID] = batch
+	return batch
+}
+
 func (s *Store) GetBatch(ctx context.Context, id string) (*domain.HandoverBatch, error) {
 	if err := s.ensureOpen(); err != nil {
 		return nil, err
@@ -32,7 +51,12 @@ func (s *Store) GetBatch(ctx context.Context, id string) (*domain.HandoverBatch,
 	if err != nil {
 		return nil, fmt.Errorf("读取交接批次: %w", err)
 	}
-	return batch, nil
+	batch = s.reuseBatch(batch)
+	data, err := encodeBatch(batch)
+	if err != nil {
+		return nil, fmt.Errorf("复制交接批次缓存: %w", err)
+	}
+	return decodeBatch(data)
 }
 
 func (s *Store) ListBatches(ctx context.Context, limit, offset int, options ...any) ([]domain.HandoverBatch, error) {
