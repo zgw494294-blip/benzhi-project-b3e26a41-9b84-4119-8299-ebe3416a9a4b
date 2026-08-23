@@ -12,9 +12,10 @@ import (
 type Clock func() time.Time
 
 type Service struct {
-	store *storage.Store
-	now   Clock
-	id    IDGenerator
+	store           *storage.Store
+	now             Clock
+	id              IDGenerator
+	projectionCache map[string]*BatchProjection
 }
 
 type Options struct {
@@ -31,7 +32,7 @@ func New(store *storage.Store, options Options) *Service {
 	if ids == nil {
 		ids = RandomID
 	}
-	return &Service{store: store, now: clock, id: ids}
+	return &Service{store: store, now: clock, id: ids, projectionCache: make(map[string]*BatchProjection)}
 }
 
 func (s *Service) CreateBatch(ctx context.Context, command CreateBatchCommand) (*domain.HandoverBatch, bool, error) {
